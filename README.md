@@ -1,8 +1,9 @@
 # O Apocalipse do Delivery
 
 Intrgrantes
-* Aluno 1
-* Aluno 2
+* Bárbara
+* Roberta
+* Thais
 
 
 Como as Fases se Conectam a este Código
