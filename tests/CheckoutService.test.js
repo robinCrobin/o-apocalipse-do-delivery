@@ -143,7 +143,7 @@ describe('Teste da classe CheckoutService', () => {
     expect(gatewayStub.cobrar).not.toHaveBeenCalled();
   });
 
-  test('delay retorna uma Promise que resolve após o tempo informado', async () => {
+  test('Delay retorna uma Promise que resolve após o tempo informado', async () => {
     jest.useFakeTimers();
 
     let resolvido = false;
@@ -170,7 +170,7 @@ describe('Teste da classe CheckoutService', () => {
     jest.useRealTimers();
   });
 
-  test('retry não passa de 3 tentativas', async () => {
+  test('Retry não passa de 3 tentativas', async () => {
     service.failures = -10;
     jest.spyOn(service, 'delay').mockResolvedValue();
 
@@ -182,5 +182,5 @@ describe('Teste da classe CheckoutService', () => {
     expect(result.status).toBe('ERRO_GATEWAY');
     expect(gatewayStub.cobrar).toHaveBeenCalledTimes(3);
   });
-  
+
 });
