@@ -31,8 +31,8 @@ class CheckoutService {
   isValid(pedido) {
     return (
       pedido?.clienteEmail?.includes('@') &&
-      pedido?.valor > 0 &&
-      pedido?.cartao
+      pedido.valor > 0 &&
+      pedido.cartao
     );
   }
 
