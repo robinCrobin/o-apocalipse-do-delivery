@@ -28,7 +28,6 @@ class CheckoutService {
     }
   }
 
-  // validação
   isValid(pedido) {
     return (
       pedido?.clienteEmail?.includes('@') &&
@@ -84,7 +83,6 @@ class CheckoutService {
     return pedido;
   }
 
-  // CIRCUIT BREAKER
   async handleFailure(pedido) {
     return this.fallback(pedido);
   }
@@ -99,6 +97,5 @@ class CheckoutService {
     return new Promise(res => setTimeout(res, ms));
   }
 }
-
 
 module.exports = { CheckoutService };

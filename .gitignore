@@ -4,3 +4,6 @@ package-lock.json
 .DS_Store
 *.log
 .env
+
+# stryker temp files
+.stryker-tmp
