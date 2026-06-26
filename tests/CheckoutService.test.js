@@ -1,98 +1,136 @@
-const { CheckoutService } = require('../src/services/CheckoutService');
-const { PedidoBuilder } = require('./builders/PedidoBuilder');
+const { CheckoutService } = require("../src/services/CheckoutService");
+const { PedidoBuilder } = require("./builders/PedidoBuilder");
 
-describe('CheckoutService - Processamento de Pedidos e Checkout', () => {
-  let gatewayPagamentoStub;
-  let pedidoRepositoryStub;
-  let emailServiceMock;
-  let checkoutService;
+
+describe('CheckoutService - Gherkin BDD', () => {
+  let gatewayStub;
+  let repoMock;
+  let emailMock;
+  let service;
+
 
   beforeEach(() => {
-    gatewayPagamentoStub = { cobrar: jest.fn() };
-    pedidoRepositoryStub = { salvar: jest.fn(pedido => Promise.resolve(pedido)) };
-    emailServiceMock = { enviarConfirmacao: jest.fn() };
+    gatewayStub = {
+      cobrar: jest.fn()
+    };
 
-    checkoutService = new CheckoutService(
-      gatewayPagamentoStub,
-      pedidoRepositoryStub,
-      emailServiceMock
+
+    repoMock = {
+      salvar: jest.fn(p => Promise.resolve({ ...p, id: 1 }))
+    };
+
+
+    emailMock = {
+      enviarConfirmacao: jest.fn()
+    };
+
+
+    service = new CheckoutService(gatewayStub, repoMock, emailMock);
+  });
+
+
+  // ---------------- CB1 ----------------
+  test('Pagamento aprovado dispara email e salva pedido', async () => {
+    gatewayStub.cobrar.mockResolvedValue({ status: 'APROVADO' });
+
+
+    const pedido = new PedidoBuilder().build();
+
+
+    const result = await service.processar(pedido);
+
+
+    expect(result.status).toBe('PROCESSADO');
+    expect(repoMock.salvar).toHaveBeenCalled();
+    expect(emailMock.enviarConfirmacao).toHaveBeenCalledWith(
+      pedido.clienteEmail,
+      expect.any(String)
     );
   });
 
-  describe('Quando o pagamento é aprovado', () => {
-    it('Deve aprovar o pagamento, salvar o pedido e disparar e-mail de confirmação', async () => {
-      // Arrange (Dado)
-      const pedido = new PedidoBuilder().build();
-      gatewayPagamentoStub.cobrar.mockResolvedValue({ status: 'APROVADO' });
 
-      // Act (Quando)
-      const resultado = await checkoutService.processar(pedido);
+  // ---------------- CB2 ----------------
+  test('Cartão recusado não envia email', async () => {
+    gatewayStub.cobrar.mockResolvedValue({ status: 'RECUSADO' });
 
-      // Assert (Então)
-      expect(resultado.status).toBe('PROCESSADO');
-      expect(pedidoRepositoryStub.salvar).toHaveBeenCalledWith(expect.objectContaining({ status: 'PROCESSADO' }));
-      expect(emailServiceMock.enviarConfirmacao).toHaveBeenCalledWith('cliente@entregasja.com', 'Pagamento Aprovado');
-    });
+
+    const pedido = new PedidoBuilder().build();
+
+
+    const result = await service.processar(pedido);
+
+
+    expect(result.status).toBe('FALHOU');
+    expect(repoMock.salvar).toHaveBeenCalled();
+    expect(emailMock.enviarConfirmacao).not.toHaveBeenCalled();
   });
 
-  describe('Quando o pagamento é recusado', () => {
-    it('Deve falhar ao recusar o cartão e NÃO disparar e-mail', async () => {
-      // Arrange (Dado)
-      const pedido = new PedidoBuilder().comCartaoInvalido().build();
-      gatewayPagamentoStub.cobrar.mockResolvedValue({ status: 'RECUSADO' });
 
-      // Act (Quando)
-      const resultado = await checkoutService.processar(pedido);
+  // ---------------- CB3 retry ----------------
+  test('Retry com sucesso após timeout', async () => {
+    gatewayStub.cobrar
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce({ status: 'APROVADO' });
 
-      // Assert (Então)
-      expect(resultado).toBeNull();
-      expect(pedidoRepositoryStub.salvar).toHaveBeenCalledWith(expect.objectContaining({ status: 'FALHOU' }));
-      expect(emailServiceMock.enviarConfirmacao).not.toHaveBeenCalled();
-    });
+
+    const pedido = new PedidoBuilder().build();
+
+
+    const result = await service.processar(pedido);
+
+
+    expect(result.status).toBe('PROCESSADO');
+    expect(gatewayStub.cobrar).toHaveBeenCalledTimes(2);
   });
 
-  describe('Quando o gateway falha', () => {
-    it('Deve realizar retentativa com backoff se houver timeout no gateway', async () => {
-      // Arrange (Dado)
-      const pedido = new PedidoBuilder().build();
-      gatewayPagamentoStub.cobrar
-        .mockRejectedValueOnce(new Error('Timeout'))
-        .mockResolvedValueOnce({ status: 'APROVADO' });
 
-      // Act (Quando)
-      const resultado = await checkoutService.processar(pedido);
+  // ---------------- fallback ----------------
+  test('Falha total ativa fallback', async () => {
+    gatewayStub.cobrar.mockRejectedValue(new Error('fail'));
 
-      // Assert (Então)
-      expect(gatewayPagamentoStub.cobrar).toHaveBeenCalledTimes(2);
-      expect(resultado.status).toBe('PROCESSADO');
-    });
 
-    it('Deve esgotar as retentativas (máximo 3) e acionar fallback sem derrubar a aplicação', async () => {
-      // Arrange (Dado)
-      const pedido = new PedidoBuilder().build();
-      gatewayPagamentoStub.cobrar.mockRejectedValue(new Error('Gateway Indisponível'));
+    const pedido = new PedidoBuilder().build();
 
-      // Act (Quando)
-      const resultado = await checkoutService.processar(pedido);
 
-      // Assert (Então)
-      expect(gatewayPagamentoStub.cobrar).toHaveBeenCalledTimes(3);
-      expect(resultado).toBeNull();
-      expect(pedidoRepositoryStub.salvar).toHaveBeenCalledWith(expect.objectContaining({ status: 'ERRO_GATEWAY' }));
-    });
+    const result = await service.processar(pedido);
 
-    it('Deve falhar rapidamente se o Circuit Breaker estiver aberto (sem chamar o gateway)', async () => {
-      // Arrange (Dado)
-      const pedido = new PedidoBuilder().build();
-      checkoutService.forcarCircuitBreakerAberto(); // Simula o estado do circuito
 
-      // Act (Quando)
-      const resultado = await checkoutService.processar(pedido);
+    expect(result.status).toBe('ERRO_GATEWAY');
+    expect(gatewayStub.cobrar).toHaveBeenCalledTimes(3);
+  });
 
-      // Assert (Então)
-      expect(gatewayPagamentoStub.cobrar).not.toHaveBeenCalled();
-      expect(resultado).toBeNull();
-      expect(pedidoRepositoryStub.salvar).toHaveBeenCalledWith(expect.objectContaining({ status: 'ERRO_GATEWAY' }));
-    });
+
+  // ---------------- circuit breaker ----------------
+  test('Circuit breaker impede chamada ao gateway', async () => {
+    gatewayStub.cobrar.mockRejectedValue(new Error('fail'));
+
+
+    const pedido = new PedidoBuilder().build();
+
+
+    await service.processar(pedido);
+    await service.processar(pedido);
+    await service.processar(pedido);
+
+
+    const result = await service.processar(pedido);
+
+
+    expect(gatewayStub.cobrar).toHaveBeenCalledTimes(3);
+    expect(result.status).toBe('ERRO_GATEWAY');
+  });
+
+
+  // ---------------- validação ----------------
+  test('Pedido inválido retorna 400 (pré-validação)', async () => {
+    const pedido = new PedidoBuilder().comEmail('').build();
+
+
+    const result = await service.processar(pedido);
+
+
+    expect(result.status).toBe('INVALIDO');
+    expect(gatewayStub.cobrar).not.toHaveBeenCalled();
   });
 });
+

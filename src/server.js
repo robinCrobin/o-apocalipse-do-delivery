@@ -29,7 +29,6 @@ const checkoutService = new CheckoutService(gatewayPagamentoMock, pedidoReposito
 // ENDPOINT CRÍTICO: Rota que receberá a carga massiva da Black Friday
 app.post('/api/v1/checkout', async (req, res) => {
   const { clienteEmail, valor, cartao } = req.body;
-  
   if (!clienteEmail || !valor || !cartao) {
     return res.status(400).json({ erro: 'Dados incompletos para checkout' });
   }
@@ -42,7 +41,7 @@ app.post('/api/v1/checkout', async (req, res) => {
   if (resultado && resultado.status === 'PROCESSADO') {
     return res.status(200).json({ mensagem: 'Pedido finalizado com sucesso!', pedido: resultado });
   }
-  
+
   return res.status(500).json({ erro: 'Não foi possível processar seu pagamento. Tente mais tarde.' });
 });
 
